@@ -621,8 +621,15 @@ class App(tk.Tk):
             y_val = int(self.world_click_y_var.get())
         except ValueError:
             y_val = BOT_COORDS["world_click_pos"][1]
-        x_val = max(0, min(2000, x_val))
-        y_val = max(0, min(2000, y_val))
+        window = get_game_window()
+        if window:
+            max_x = max(0, int(window.width))
+            max_y = max(0, int(window.height))
+        else:
+            max_x = 2000
+            max_y = 2000
+        x_val = max(0, min(max_x, x_val))
+        y_val = max(0, min(max_y, y_val))
         self.world_click_x_var.set(str(x_val))
         self.world_click_y_var.set(str(y_val))
         return (x_val, y_val)
@@ -696,6 +703,16 @@ class App(tk.Tk):
                 return False
             rel_x = int(x - window.left)
             rel_y = int(y - window.top)
+            if rel_x < 0 or rel_y < 0 or rel_x > window.width or rel_y > window.height:
+                self.after(
+                    0,
+                    lambda: messagebox.showwarning(
+                        "Click fuera de ventana",
+                        "El click debe estar dentro de la ventana 'Miscrits'.",
+                    ),
+                )
+                self.after(0, self._reset_world_click_capture)
+                return False
             self.after(0, lambda: self._set_world_click_from_listener(rel_x, rel_y))
             return False
 
@@ -713,8 +730,15 @@ class App(tk.Tk):
         if self.world_click_listener is not None:
             self.world_click_listener.stop()
             self.world_click_listener = None
-        x_val = max(0, min(2000, x_val))
-        y_val = max(0, min(2000, y_val))
+        window = get_game_window()
+        if window:
+            max_x = max(0, int(window.width))
+            max_y = max(0, int(window.height))
+        else:
+            max_x = 2000
+            max_y = 2000
+        x_val = max(0, min(max_x, x_val))
+        y_val = max(0, min(max_y, y_val))
         self.world_click_x_var.set(str(x_val))
         self.world_click_y_var.set(str(y_val))
         self.world_click_label_var.set(self._format_world_click_pos())
