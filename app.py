@@ -585,6 +585,7 @@ class App(tk.Tk):
         try:
             keyboard.add_hotkey("f10", self.on_start)
             keyboard.add_hotkey("esc", self.on_close)
+            keyboard.add_hotkey("x", self._arm_world_click_capture)
             self.keyboard_hotkeys_enabled = True
         except Exception as exc:
             self._ui_log(f"[WARN] Hotkeys desactivados: {exc}")
