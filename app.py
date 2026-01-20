@@ -585,6 +585,7 @@ class App(tk.Tk):
         try:
             keyboard.add_hotkey("f10", self.on_start)
             keyboard.add_hotkey("esc", self.on_close)
+            keyboard.add_hotkey("x", self._arm_world_click_capture)
             self.keyboard_hotkeys_enabled = True
         except Exception as exc:
             self._ui_log(f"[WARN] Hotkeys desactivados: {exc}")
@@ -701,7 +702,12 @@ class App(tk.Tk):
                 )
                 self.after(0, self._reset_world_click_capture)
                 return False
-            if x < window.left or y < window.top or x > window.right or y > window.bottom:
+            rel_x = int(x - window.left)
+            rel_y = int(y - window.top)
+            max_x = max(0, int(window.width))
+            max_y = max(0, int(window.height))
+            margin = 20
+            if rel_x < -margin or rel_y < -margin or rel_x > max_x + margin or rel_y > max_y + margin:
                 self.after(
                     0,
                     lambda: messagebox.showwarning(
@@ -711,10 +717,6 @@ class App(tk.Tk):
                 )
                 self.after(0, self._reset_world_click_capture)
                 return False
-            rel_x = int(x - window.left)
-            rel_y = int(y - window.top)
-            max_x = max(0, int(window.width))
-            max_y = max(0, int(window.height))
             rel_x = max(0, min(max_x, rel_x))
             rel_y = max(0, min(max_y, rel_y))
             self.after(0, lambda: self._set_world_click_from_listener(rel_x, rel_y))
