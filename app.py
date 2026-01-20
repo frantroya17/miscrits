@@ -1,5 +1,6 @@
 import time
 import threading
+import re
 from dataclasses import dataclass
 from typing import Optional, Dict, Tuple
 
@@ -11,6 +12,7 @@ import pygetwindow as gw
 import cv2
 import numpy as np
 from mss import mss
+import pytesseract
 
 
 MONITOR = 1
@@ -18,6 +20,7 @@ SLEEP_SEC = 0.25
 THRESH_DEFAULT = 0.86
 CLICK_DELAY = 0.15
 ACTION_COOLDOWN_SEC = 1.0
+OCR_COOLDOWN_SEC = 0.5
 WINDOW_TITLE = "Miscrits"
 
 pyautogui.FAILSAFE = True
@@ -32,6 +35,7 @@ BOT_COORDS = {
         (670, 629),
         (829, 633),
     ],
+    "capture_ocr_rect": [(-516, 205), (-473, 217)],
 }
 
 
@@ -113,16 +117,19 @@ def detect_state(screen_gray: np.ndarray, tpls: Dict[str, Tuple[np.ndarray, floa
 
 
 class BotRunner:
-    def __init__(self, on_state=None, on_log=None):
+    def __init__(self, on_state=None, on_log=None, on_capture_rate=None):
         self.stop_event = threading.Event()
         self.thread: Optional[threading.Thread] = None
         self.running = False
 
         self.on_state = on_state
         self.on_log = on_log
+        self.on_capture_rate = on_capture_rate
 
         self.last_action_time = 0.0
+        self.last_ocr_time = 0.0
         self.last_state = None
+        self.last_capture_rate = None
 
         # Config (desde UI)
         self.auto_continue = True
@@ -130,11 +137,13 @@ class BotRunner:
         self.kill_attack_index = 1      # 1..12
         self.capture_attack_index = 1   # 1..12  <-- NUEVO
         self.capture_success_rate = 50  # 1..100 (%)
+        self.capture_ocr_enabled = False
 
         # Coordenadas (RELATIVAS)
         self.tech_left_arrow = BOT_COORDS["tech_left_arrow"]
         self.tech_right_arrow = BOT_COORDS["tech_right_arrow"]
         self.tech_slots = BOT_COORDS["tech_slots"]
+        self.capture_ocr_rect = BOT_COORDS["capture_ocr_rect"]
 
         # Templates de estado
         self.templates = {
@@ -161,6 +170,43 @@ class BotRunner:
     def set_state(self, st: str):
         if self.on_state:
             self.on_state(st)
+
+    def set_capture_rate(self, rate: Optional[int]):
+        if rate != self.last_capture_rate:
+            self.last_capture_rate = rate
+            if self.on_capture_rate:
+                self.on_capture_rate(rate)
+
+    def _read_capture_rate(self, screen_gray: np.ndarray, window) -> Optional[int]:
+        rect = self.capture_ocr_rect
+        left = window.left + min(rect[0][0], rect[1][0])
+        right = window.left + max(rect[0][0], rect[1][0])
+        top = window.top + min(rect[0][1], rect[1][1])
+        bottom = window.top + max(rect[0][1], rect[1][1])
+
+        left = max(0, left)
+        top = max(0, top)
+        right = min(screen_gray.shape[1], right)
+        bottom = min(screen_gray.shape[0], bottom)
+
+        if right <= left or bottom <= top:
+            return None
+
+        crop = screen_gray[top:bottom, left:right]
+        if crop.size == 0:
+            return None
+
+        crop = cv2.resize(crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+        _, thresh = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        text = pytesseract.image_to_string(
+            thresh,
+            config="--psm 7 -c tessedit_char_whitelist=0123456789",
+        )
+        digits = re.findall(r"\d+", text)
+        if not digits:
+            return None
+        value = int(digits[0])
+        return max(0, min(100, value))
 
     def start(self):
         if self.running:
@@ -240,14 +286,30 @@ class BotRunner:
                         self.last_action_time = time.time()
 
                 elif can_act and state == "FIGHT_MY_TURN":
-                    # Por ahora seguimos usando MATAR (sin cambiar lógica aún)
-                    self.log(f"[ACTION] Ataque MATAR #{self.kill_attack_index}")
-                    self.select_kill_attack(self.kill_attack_index)
-                    self.last_action_time = time.time()
+                    attack_type = "MATAR"
 
-                    # (Dejamos listo captura para el próximo paso)
-                    # self.log(f"[ACTION] Ataque CAPTURA #{self.capture_attack_index}")
-                    # self.select_capture_attack(self.capture_attack_index)
+                    if self.capture_ocr_enabled:
+                        if (time.time() - self.last_ocr_time) >= OCR_COOLDOWN_SEC:
+                            window = get_game_window()
+                            if window:
+                                rate = self._read_capture_rate(gray, window)
+                                self.set_capture_rate(rate)
+                                self.last_ocr_time = time.time()
+                            else:
+                                self.set_capture_rate(None)
+
+                        if self.last_capture_rate is not None:
+                            if self.last_capture_rate >= self.capture_success_rate:
+                                attack_type = "CAPTURAR"
+
+                    if attack_type == "CAPTURAR":
+                        self.log(f"[ACTION] Ataque CAPTURA #{self.capture_attack_index}")
+                        self.select_capture_attack(self.capture_attack_index)
+                    else:
+                        self.log(f"[ACTION] Ataque MATAR #{self.kill_attack_index}")
+                        self.select_kill_attack(self.kill_attack_index)
+
+                    self.last_action_time = time.time()
 
                 time.sleep(SLEEP_SEC)
 
@@ -262,7 +324,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Miscrits Bot (Python)")
-        self.geometry("650x430")
+        self.geometry("760x430")
         self.resizable(False, False)
 
         self.state_var = tk.StringVar(value="Estado: -")
@@ -322,13 +384,28 @@ class App(tk.Tk):
         self.capture_rate_spin.bind("<Return>", lambda e: self._apply_settings())
         self.capture_rate_spin.pack(side="left")
 
+        self.capture_ocr_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            opts,
+            text="Capturar según OCR",
+            variable=self.capture_ocr_var,
+            command=self._apply_settings,
+        ).pack(side="left", padx=(14, 0))
+
+        self.capture_ocr_label_var = tk.StringVar(value="OCR: --%")
+        ttk.Label(opts, textvariable=self.capture_ocr_label_var).pack(side="left", padx=(10, 0))
+
         mid = ttk.Frame(self, padding=(10, 0, 10, 10))
         mid.pack(fill="both", expand=True)
 
         self.log_box = tk.Text(mid, height=14, wrap="word")
         self.log_box.pack(fill="both", expand=True)
 
-        self.bot = BotRunner(on_state=self._ui_set_state, on_log=self._ui_log)
+        self.bot = BotRunner(
+            on_state=self._ui_set_state,
+            on_log=self._ui_log,
+            on_capture_rate=self._ui_set_capture_rate,
+        )
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -338,6 +415,7 @@ class App(tk.Tk):
         self.bot.kill_attack_index = int(self.kill_combo.get())
         self.bot.capture_attack_index = int(self.capture_combo.get())
         self.bot.capture_success_rate = self._get_capture_rate()
+        self.bot.capture_ocr_enabled = bool(self.capture_ocr_var.get())
 
     def _get_capture_rate(self) -> int:
         try:
@@ -356,6 +434,13 @@ class App(tk.Tk):
             self.log_box.insert("end", msg + "\n")
             self.log_box.see("end")
         self.after(0, _append)
+
+    def _ui_set_capture_rate(self, rate: Optional[int]):
+        if rate is None:
+            text = "OCR: --%"
+        else:
+            text = f"OCR: {rate}%"
+        self.after(0, lambda: self.capture_ocr_label_var.set(text))
 
     def on_start(self):
         try:
