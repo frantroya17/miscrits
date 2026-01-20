@@ -14,6 +14,7 @@ import cv2
 import numpy as np
 from mss import mss
 import pytesseract
+import keyboard
 
 
 MONITOR = 1
@@ -175,6 +176,7 @@ class BotRunner:
         # Botones popup (por template)
         self.btn_continue = load_tpl("tpl/btn_continue.png")
         self.btn_save = load_tpl("tpl/btn_save.png")
+        self.btn_capture = load_tpl("tpl/captura.png")
         self.btn_thr = 0.85
 
     def log(self, msg: str):
@@ -313,6 +315,8 @@ class BotRunner:
 
                 elif can_act and state == "FIGHT_MY_TURN":
                     attack_type = "MATAR"
+                    action_taken = False
+                    rate = None
 
                     if self.capture_ocr_enabled:
                         if (time.time() - self.last_ocr_time) >= OCR_COOLDOWN_SEC:
@@ -323,8 +327,29 @@ class BotRunner:
                                 self.last_ocr_time = time.time()
                             else:
                                 self.set_capture_rate(None)
+                        else:
+                            rate = self.last_capture_rate
 
-                        attack_type = "CAPTURAR"
+                        if rate is not None and rate > self.capture_success_rate:
+                            pos = find_center(gray, self.btn_capture, self.btn_thr)
+                            if pos:
+                                x, y, conf = pos
+                                self.log(
+                                    "[ACTION] Click CAPTURE "
+                                    f"({rate}% > {self.capture_success_rate}%, {conf:.2f})"
+                                )
+                                click_at(x, y)
+                                self.last_action_time = time.time()
+                                action_taken = True
+                            else:
+                                self.log("[WARN] No encuentro el botón CAPTURE (tpl/captura.png).")
+                                attack_type = "CAPTURAR"
+                        else:
+                            attack_type = "MATAR"
+
+                    if action_taken:
+                        time.sleep(SLEEP_SEC)
+                        continue
 
                     if attack_type == "CAPTURAR":
                         self.log(f"[ACTION] Ataque CAPTURA #{self.capture_attack_index}")
@@ -453,6 +478,14 @@ class App(tk.Tk):
             on_capture_rate=self._ui_set_capture_rate,
         )
 
+        self.keyboard_hotkeys_enabled = False
+        try:
+            keyboard.add_hotkey("f10", self.on_start)
+            keyboard.add_hotkey("esc", self.on_close)
+            self.keyboard_hotkeys_enabled = True
+        except Exception as exc:
+            self._ui_log(f"[WARN] Hotkeys desactivados: {exc}")
+
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def _apply_settings(self):
@@ -506,6 +539,8 @@ class App(tk.Tk):
 
     def on_close(self):
         self.bot.stop()
+        if self.keyboard_hotkeys_enabled:
+            keyboard.unhook_all_hotkeys()
         self.destroy()
 
 
