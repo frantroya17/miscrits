@@ -27,6 +27,14 @@ WINDOW_TITLE = "Miscrits"
 
 pyautogui.FAILSAFE = True
 
+RARITIES = [
+    ("Común", "comun"),
+    ("Raro", "raro"),
+    ("Épico", "epico"),
+    ("Exótico", "exotico"),
+    ("Legendario", "legendario"),
+]
+
 
 def configure_tesseract() -> Optional[str]:
     cmd = os.environ.get("TESSERACT_CMD")
@@ -164,6 +172,8 @@ class BotRunner:
         self.capture_attack_index = 1   # 1..12  <-- NUEVO
         self.capture_success_rate = 50  # 1..100 (%)
         self.capture_ocr_enabled = False
+        self.rarity_target = "comun"
+        self.rarity_capturable = {key: True for _, key in RARITIES}
 
         # Coordenadas (RELATIVAS)
         self.tech_left_arrow = BOT_COORDS["tech_left_arrow"]
@@ -392,7 +402,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Miscrits Bot (Python)")
-        self.geometry("760x430")
+        self.geometry("760x520")
         self.resizable(False, False)
 
         self.state_var = tk.StringVar(value="Estado: -")
@@ -485,6 +495,43 @@ class App(tk.Tk):
         self.capture_ocr_label_var = tk.StringVar(value="OCR: --%")
         ttk.Label(row3, textvariable=self.capture_ocr_label_var).pack(side="left", padx=(10, 0))
 
+        row4 = ttk.Frame(opts)
+        row4.pack(fill="x", anchor="w", pady=(8, 0))
+
+        ttk.Label(row4, text="Rareza objetivo:").pack(side="left", padx=(0, 6))
+        self.rarity_target_var = tk.StringVar(value=RARITIES[0][0])
+        self.rarity_combo = ttk.Combobox(
+            row4,
+            values=[label for label, _ in RARITIES],
+            width=12,
+            state="readonly",
+            textvariable=self.rarity_target_var,
+        )
+        self.rarity_combo.bind("<<ComboboxSelected>>", lambda e: self._apply_settings())
+        self.rarity_combo.pack(side="left")
+
+        row5 = ttk.Frame(opts)
+        row5.pack(fill="x", anchor="w", pady=(6, 0))
+
+        self.rarity_images = self._load_rarity_images()
+        self.rarity_capturable_vars = {}
+        for label, key in RARITIES:
+            rarity_frame = ttk.Frame(row5)
+            rarity_frame.pack(side="left", padx=(0, 10))
+            img = self.rarity_images.get(key)
+            if img:
+                ttk.Label(rarity_frame, image=img).pack()
+            else:
+                ttk.Label(rarity_frame, text=label).pack()
+            var = tk.BooleanVar(value=True)
+            self.rarity_capturable_vars[key] = var
+            ttk.Checkbutton(
+                rarity_frame,
+                text="Atrapable",
+                variable=var,
+                command=self._apply_settings,
+            ).pack()
+
         mid = ttk.Frame(self, padding=(10, 0, 10, 10))
         mid.pack(fill="both", expand=True)
 
@@ -514,6 +561,10 @@ class App(tk.Tk):
         self.bot.capture_attack_index = int(self.capture_combo.get())
         self.bot.capture_success_rate = self._get_capture_rate()
         self.bot.capture_ocr_enabled = bool(self.capture_ocr_var.get())
+        self.bot.rarity_target = self._get_rarity_target_key()
+        self.bot.rarity_capturable = {
+            key: bool(var.get()) for key, var in self.rarity_capturable_vars.items()
+        }
 
     def _get_capture_rate(self) -> int:
         try:
@@ -539,6 +590,26 @@ class App(tk.Tk):
         else:
             text = f"OCR: {rate}%"
         self.after(0, lambda: self.capture_ocr_label_var.set(text))
+
+    def _get_rarity_target_key(self) -> str:
+        selected = self.rarity_target_var.get()
+        for label, key in RARITIES:
+            if label == selected:
+                return key
+        return RARITIES[0][1]
+
+    def _load_rarity_images(self) -> Dict[str, tk.PhotoImage]:
+        images: Dict[str, tk.PhotoImage] = {}
+        for _, key in RARITIES:
+            candidates = [
+                f"tpl/rareza_{key}.png",
+                f"rareza_{key}.png",
+            ]
+            for path in candidates:
+                if os.path.exists(path):
+                    images[key] = tk.PhotoImage(file=path)
+                    break
+        return images
 
     def on_start(self):
         try:
