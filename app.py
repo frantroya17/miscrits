@@ -15,6 +15,10 @@ import numpy as np
 from mss import mss
 import pytesseract
 import keyboard
+try:
+    from pynput import mouse as pynput_mouse
+except Exception:
+    pynput_mouse = None
 
 
 MONITOR = 1
@@ -541,30 +545,15 @@ class App(tk.Tk):
         ttk.Label(row5, text="Click WORLD (X,Y):").pack(side="left", padx=(0, 6))
         self.world_click_x_var = tk.StringVar(value="480")
         self.world_click_y_var = tk.StringVar(value="360")
-        self.world_click_x_spin = ttk.Spinbox(
+        self.world_click_label_var = tk.StringVar(value=self._format_world_click_pos())
+        ttk.Label(row5, textvariable=self.world_click_label_var).pack(side="left")
+        self.world_click_listener = None
+        self.set_world_click_btn = ttk.Button(
             row5,
-            from_=0,
-            to=2000,
-            width=6,
-            textvariable=self.world_click_x_var,
-            command=self._apply_settings,
+            text="Set coordinates",
+            command=self._arm_world_click_capture,
         )
-        self.world_click_x_spin.bind("<FocusOut>", lambda e: self._apply_settings())
-        self.world_click_x_spin.bind("<Return>", lambda e: self._apply_settings())
-        self.world_click_x_spin.pack(side="left")
-
-        ttk.Label(row5, text=",").pack(side="left")
-        self.world_click_y_spin = ttk.Spinbox(
-            row5,
-            from_=0,
-            to=2000,
-            width=6,
-            textvariable=self.world_click_y_var,
-            command=self._apply_settings,
-        )
-        self.world_click_y_spin.bind("<FocusOut>", lambda e: self._apply_settings())
-        self.world_click_y_spin.bind("<Return>", lambda e: self._apply_settings())
-        self.world_click_y_spin.pack(side="left")
+        self.set_world_click_btn.pack(side="left", padx=(8, 0))
 
         ttk.Label(row5, text="Cooldown WORLD (1-30s):").pack(side="left", padx=(14, 6))
         self.world_click_cooldown_var = tk.StringVar(value="30")
@@ -638,6 +627,9 @@ class App(tk.Tk):
         self.world_click_y_var.set(str(y_val))
         return (x_val, y_val)
 
+    def _format_world_click_pos(self) -> str:
+        return f"{self.world_click_x_var.get()}, {self.world_click_y_var.get()}"
+
     def _get_world_click_cooldown(self) -> int:
         try:
             value = int(self.world_click_cooldown_var.get())
@@ -675,6 +667,59 @@ class App(tk.Tk):
                     images[key] = tk.PhotoImage(file=path)
                     break
         return images
+
+    def _arm_world_click_capture(self):
+        if pynput_mouse is None:
+            messagebox.showwarning(
+                "No disponible",
+                "No se pudo activar la captura de click (falta pynput).",
+            )
+            return
+        if self.world_click_listener is not None:
+            return
+        self.set_world_click_btn.config(state="disabled")
+        self.world_click_label_var.set("Esperando click...")
+
+        def on_click(x, y, button, pressed):
+            if not pressed:
+                return True
+            window = get_game_window()
+            if not window:
+                self.after(
+                    0,
+                    lambda: messagebox.showwarning(
+                        "Ventana no encontrada",
+                        "No se encontró la ventana 'Miscrits'.",
+                    ),
+                )
+                self.after(0, self._reset_world_click_capture)
+                return False
+            rel_x = int(x - window.left)
+            rel_y = int(y - window.top)
+            self.after(0, lambda: self._set_world_click_from_listener(rel_x, rel_y))
+            return False
+
+        self.world_click_listener = pynput_mouse.Listener(on_click=on_click)
+        self.world_click_listener.start()
+
+    def _reset_world_click_capture(self):
+        if self.world_click_listener is not None:
+            self.world_click_listener.stop()
+            self.world_click_listener = None
+        self.world_click_label_var.set(self._format_world_click_pos())
+        self.set_world_click_btn.config(state="normal")
+
+    def _set_world_click_from_listener(self, x_val: int, y_val: int):
+        if self.world_click_listener is not None:
+            self.world_click_listener.stop()
+            self.world_click_listener = None
+        x_val = max(0, min(2000, x_val))
+        y_val = max(0, min(2000, y_val))
+        self.world_click_x_var.set(str(x_val))
+        self.world_click_y_var.set(str(y_val))
+        self.world_click_label_var.set(self._format_world_click_pos())
+        self.set_world_click_btn.config(state="normal")
+        self._apply_settings()
 
     def on_start(self):
         try:
