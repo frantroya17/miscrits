@@ -44,7 +44,7 @@ BOT_COORDS = {
         (670, 629),
         (829, 633),
     ],
-    "capture_ocr_rect": [(-516, 205), (-473, 217)],
+    "capture_ocr_rect": [(561, 136), (605, 149)],
 }
 
 
@@ -195,12 +195,12 @@ class BotRunner:
             else:
                 self.log(f"[OCR] Captura: {rate}%")
 
-    def _read_capture_rate(self, screen_gray: np.ndarray, window) -> Optional[int]:
+    def _read_capture_rate(self, screen_gray: np.ndarray, window, monitor) -> Optional[int]:
         rect = self.capture_ocr_rect
-        left = window.left + min(rect[0][0], rect[1][0])
-        right = window.left + max(rect[0][0], rect[1][0])
-        top = window.top + min(rect[0][1], rect[1][1])
-        bottom = window.top + max(rect[0][1], rect[1][1])
+        left = window.left + min(rect[0][0], rect[1][0]) - monitor["left"]
+        right = window.left + max(rect[0][0], rect[1][0]) - monitor["left"]
+        top = window.top + min(rect[0][1], rect[1][1]) - monitor["top"]
+        bottom = window.top + max(rect[0][1], rect[1][1]) - monitor["top"]
 
         left = max(0, left)
         top = max(0, top)
@@ -318,7 +318,7 @@ class BotRunner:
                         if (time.time() - self.last_ocr_time) >= OCR_COOLDOWN_SEC:
                             window = get_game_window()
                             if window:
-                                rate = self._read_capture_rate(gray, window)
+                                rate = self._read_capture_rate(gray, window, monitor)
                                 self.set_capture_rate(rate)
                                 self.last_ocr_time = time.time()
                             else:
