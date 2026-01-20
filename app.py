@@ -176,6 +176,10 @@ class BotRunner:
             self.last_capture_rate = rate
             if self.on_capture_rate:
                 self.on_capture_rate(rate)
+            if rate is None:
+                self.log("[OCR] Captura: --%")
+            else:
+                self.log(f"[OCR] Captura: {rate}%")
 
     def _read_capture_rate(self, screen_gray: np.ndarray, window) -> Optional[int]:
         rect = self.capture_ocr_rect
