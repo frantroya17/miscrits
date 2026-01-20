@@ -56,6 +56,7 @@ BOT_COORDS = {
     ],
     "capture_ocr_rect": [(561, 136), (605, 149)],
     "neutral_hover_pos": (30, 30),
+    "world_click_pos": (480, 360),
 }
 
 
@@ -165,6 +166,7 @@ class BotRunner:
         self.last_ocr_time = 0.0
         self.last_state = None
         self.last_capture_rate = None
+        self.last_world_click_time = 0.0
 
         # Config (desde UI)
         self.auto_continue = True
@@ -172,6 +174,8 @@ class BotRunner:
         self.kill_attack_index = 1      # 1..12
         self.capture_attack_index = 1   # 1..12  <-- NUEVO
         self.capture_success_rate = 50  # 1..100 (%)
+        self.world_click_pos = BOT_COORDS["world_click_pos"]
+        self.world_click_cooldown_sec = 30
         self.last_rarity = None
         self.rarity_capturable = {key: True for _, key in RARITIES}
 
@@ -398,6 +402,18 @@ class BotRunner:
 
                     self.last_action_time = time.time()
 
+                if state == "WORLD":
+                    if (now - self.last_world_click_time) >= self.world_click_cooldown_sec:
+                        if click_rel(*self.world_click_pos):
+                            self.log(
+                                "[ACTION] Click WORLD "
+                                f"{self.world_click_pos} "
+                                f"(cooldown {self.world_click_cooldown_sec}s)"
+                            )
+                            self.last_world_click_time = now
+                        else:
+                            self.log("[WARN] No encuentro la ventana 'Miscrits' para click WORLD.")
+
                 time.sleep(SLEEP_SEC)
 
         except Exception as e:
@@ -519,6 +535,51 @@ class App(tk.Tk):
                 command=self._apply_settings,
             ).pack()
 
+        row5 = ttk.Frame(opts)
+        row5.pack(fill="x", anchor="w", pady=(8, 0))
+
+        ttk.Label(row5, text="Click WORLD (X,Y):").pack(side="left", padx=(0, 6))
+        self.world_click_x_var = tk.StringVar(value="480")
+        self.world_click_y_var = tk.StringVar(value="360")
+        self.world_click_x_spin = ttk.Spinbox(
+            row5,
+            from_=0,
+            to=2000,
+            width=6,
+            textvariable=self.world_click_x_var,
+            command=self._apply_settings,
+        )
+        self.world_click_x_spin.bind("<FocusOut>", lambda e: self._apply_settings())
+        self.world_click_x_spin.bind("<Return>", lambda e: self._apply_settings())
+        self.world_click_x_spin.pack(side="left")
+
+        ttk.Label(row5, text=",").pack(side="left")
+        self.world_click_y_spin = ttk.Spinbox(
+            row5,
+            from_=0,
+            to=2000,
+            width=6,
+            textvariable=self.world_click_y_var,
+            command=self._apply_settings,
+        )
+        self.world_click_y_spin.bind("<FocusOut>", lambda e: self._apply_settings())
+        self.world_click_y_spin.bind("<Return>", lambda e: self._apply_settings())
+        self.world_click_y_spin.pack(side="left")
+
+        ttk.Label(row5, text="Cooldown WORLD (1-30s):").pack(side="left", padx=(14, 6))
+        self.world_click_cooldown_var = tk.StringVar(value="30")
+        self.world_click_cooldown_spin = ttk.Spinbox(
+            row5,
+            from_=1,
+            to=30,
+            width=4,
+            textvariable=self.world_click_cooldown_var,
+            command=self._apply_settings,
+        )
+        self.world_click_cooldown_spin.bind("<FocusOut>", lambda e: self._apply_settings())
+        self.world_click_cooldown_spin.bind("<Return>", lambda e: self._apply_settings())
+        self.world_click_cooldown_spin.pack(side="left")
+
         mid = ttk.Frame(self, padding=(10, 0, 10, 10))
         mid.pack(fill="both", expand=True)
 
@@ -547,6 +608,8 @@ class App(tk.Tk):
         self.bot.kill_attack_index = int(self.kill_combo.get())
         self.bot.capture_attack_index = int(self.capture_combo.get())
         self.bot.capture_success_rate = self._get_capture_rate()
+        self.bot.world_click_pos = self._get_world_click_pos()
+        self.bot.world_click_cooldown_sec = self._get_world_click_cooldown()
         self.bot.rarity_capturable = {
             key: bool(var.get()) for key, var in self.rarity_capturable_vars.items()
         }
@@ -558,6 +621,30 @@ class App(tk.Tk):
             value = 50
         value = max(1, min(100, value))
         self.capture_rate_var.set(str(value))
+        return value
+
+    def _get_world_click_pos(self) -> Tuple[int, int]:
+        try:
+            x_val = int(self.world_click_x_var.get())
+        except ValueError:
+            x_val = BOT_COORDS["world_click_pos"][0]
+        try:
+            y_val = int(self.world_click_y_var.get())
+        except ValueError:
+            y_val = BOT_COORDS["world_click_pos"][1]
+        x_val = max(0, min(2000, x_val))
+        y_val = max(0, min(2000, y_val))
+        self.world_click_x_var.set(str(x_val))
+        self.world_click_y_var.set(str(y_val))
+        return (x_val, y_val)
+
+    def _get_world_click_cooldown(self) -> int:
+        try:
+            value = int(self.world_click_cooldown_var.get())
+        except ValueError:
+            value = 30
+        value = max(1, min(30, value))
+        self.world_click_cooldown_var.set(str(value))
         return value
 
     def _ui_set_state(self, st: str):
