@@ -129,6 +129,7 @@ class BotRunner:
         self.auto_save = True
         self.kill_attack_index = 1      # 1..12
         self.capture_attack_index = 1   # 1..12  <-- NUEVO
+        self.capture_success_rate = 50  # 1..100 (%)
 
         # Coordenadas (RELATIVAS)
         self.tech_left_arrow = BOT_COORDS["tech_left_arrow"]
@@ -307,6 +308,20 @@ class App(tk.Tk):
         self.capture_combo.bind("<<ComboboxSelected>>", lambda e: self._apply_settings())
         self.capture_combo.pack(side="left")
 
+        ttk.Label(opts, text="Éxito Captura (% 1-100):").pack(side="left", padx=(14, 6))
+        self.capture_rate_var = tk.StringVar(value="50")
+        self.capture_rate_spin = ttk.Spinbox(
+            opts,
+            from_=1,
+            to=100,
+            width=5,
+            textvariable=self.capture_rate_var,
+            command=self._apply_settings,
+        )
+        self.capture_rate_spin.bind("<FocusOut>", lambda e: self._apply_settings())
+        self.capture_rate_spin.bind("<Return>", lambda e: self._apply_settings())
+        self.capture_rate_spin.pack(side="left")
+
         mid = ttk.Frame(self, padding=(10, 0, 10, 10))
         mid.pack(fill="both", expand=True)
 
@@ -322,6 +337,16 @@ class App(tk.Tk):
         self.bot.auto_save = bool(self.auto_save_var.get())
         self.bot.kill_attack_index = int(self.kill_combo.get())
         self.bot.capture_attack_index = int(self.capture_combo.get())
+        self.bot.capture_success_rate = self._get_capture_rate()
+
+    def _get_capture_rate(self) -> int:
+        try:
+            value = int(self.capture_rate_var.get())
+        except ValueError:
+            value = 50
+        value = max(1, min(100, value))
+        self.capture_rate_var.set(str(value))
+        return value
 
     def _ui_set_state(self, st: str):
         self.after(0, lambda: self.state_var.set(f"Estado: {st}"))
