@@ -1,6 +1,7 @@
 import time
 import threading
 import re
+import os
 from dataclasses import dataclass
 from typing import Optional, Dict, Tuple
 
@@ -24,6 +25,14 @@ OCR_COOLDOWN_SEC = 0.5
 WINDOW_TITLE = "Miscrits"
 
 pyautogui.FAILSAFE = True
+
+
+def configure_tesseract() -> Optional[str]:
+    cmd = os.environ.get("TESSERACT_CMD")
+    if cmd:
+        pytesseract.pytesseract.tesseract_cmd = cmd
+        return cmd
+    return None
 
 
 BOT_COORDS = {
@@ -125,6 +134,11 @@ class BotRunner:
         self.on_state = on_state
         self.on_log = on_log
         self.on_capture_rate = on_capture_rate
+        self.tesseract_cmd = configure_tesseract()
+        if self.tesseract_cmd:
+            self.log(f"[OCR] Usando Tesseract: {self.tesseract_cmd}")
+        else:
+            self.log(f"[OCR] Tesseract cmd: {pytesseract.pytesseract.tesseract_cmd}")
 
         self.last_action_time = 0.0
         self.last_ocr_time = 0.0
@@ -202,10 +216,14 @@ class BotRunner:
 
         crop = cv2.resize(crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
         _, thresh = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        text = pytesseract.image_to_string(
-            thresh,
-            config="--psm 7 -c tessedit_char_whitelist=0123456789",
-        )
+        try:
+            text = pytesseract.image_to_string(
+                thresh,
+                config="--psm 7 -c tessedit_char_whitelist=0123456789",
+            )
+        except Exception as exc:
+            self.log(f"[OCR] Error Tesseract: {exc}")
+            return None
         raw_text = text.strip()
         digits = re.findall(r"\d+", text)
         if not digits:
