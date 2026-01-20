@@ -345,7 +345,7 @@ class BotRunner:
                                 self.log("[WARN] No encuentro el botón CAPTURE (tpl/captura.png).")
                                 attack_type = "CAPTURAR"
                         else:
-                            attack_type = "MATAR"
+                            attack_type = "CAPTURAR"
 
                     if action_taken:
                         time.sleep(SLEEP_SEC)
