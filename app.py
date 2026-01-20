@@ -701,6 +701,16 @@ class App(tk.Tk):
                 )
                 self.after(0, self._reset_world_click_capture)
                 return False
+            if x < window.left or y < window.top or x > window.right or y > window.bottom:
+                self.after(
+                    0,
+                    lambda: messagebox.showwarning(
+                        "Click fuera de ventana",
+                        "El click debe estar dentro de la ventana 'Miscrits'.",
+                    ),
+                )
+                self.after(0, self._reset_world_click_capture)
+                return False
             rel_x = int(x - window.left)
             rel_y = int(y - window.top)
             max_x = max(0, int(window.width))
