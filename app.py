@@ -350,30 +350,52 @@ class App(tk.Tk):
         opts = ttk.LabelFrame(top, text="Opciones", padding=8)
         opts.pack(fill="x", pady=(10, 0))
 
+        row1 = ttk.Frame(opts)
+        row1.pack(fill="x", anchor="w")
+
         self.auto_continue_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(opts, text="Auto Continuar", variable=self.auto_continue_var,
-                        command=self._apply_settings).pack(side="left")
+        ttk.Checkbutton(
+            row1,
+            text="Auto Continuar",
+            variable=self.auto_continue_var,
+            command=self._apply_settings,
+        ).pack(side="left")
 
         self.auto_save_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(opts, text="Auto Guardar", variable=self.auto_save_var,
-                        command=self._apply_settings).pack(side="left", padx=10)
+        ttk.Checkbutton(
+            row1,
+            text="Auto Guardar",
+            variable=self.auto_save_var,
+            command=self._apply_settings,
+        ).pack(side="left", padx=10)
 
-        ttk.Label(opts, text="Ataque MATAR (1-12):").pack(side="left", padx=(10, 6))
-        self.kill_combo = ttk.Combobox(opts, values=[str(i) for i in range(1, 13)], width=3, state="readonly")
+        row2 = ttk.Frame(opts)
+        row2.pack(fill="x", anchor="w", pady=(6, 0))
+
+        ttk.Label(row2, text="Ataque MATAR (1-12):").pack(side="left", padx=(0, 6))
+        self.kill_combo = ttk.Combobox(row2, values=[str(i) for i in range(1, 13)], width=3, state="readonly")
         self.kill_combo.set("1")
         self.kill_combo.bind("<<ComboboxSelected>>", lambda e: self._apply_settings())
         self.kill_combo.pack(side="left")
 
-        ttk.Label(opts, text="Ataque CAPTURAR (1-12):").pack(side="left", padx=(14, 6))
-        self.capture_combo = ttk.Combobox(opts, values=[str(i) for i in range(1, 13)], width=3, state="readonly")
+        ttk.Label(row2, text="Ataque CAPTURAR (1-12):").pack(side="left", padx=(14, 6))
+        self.capture_combo = ttk.Combobox(
+            row2,
+            values=[str(i) for i in range(1, 13)],
+            width=3,
+            state="readonly",
+        )
         self.capture_combo.set("1")
         self.capture_combo.bind("<<ComboboxSelected>>", lambda e: self._apply_settings())
         self.capture_combo.pack(side="left")
 
-        ttk.Label(opts, text="Éxito Captura (% 1-100):").pack(side="left", padx=(14, 6))
+        row3 = ttk.Frame(opts)
+        row3.pack(fill="x", anchor="w", pady=(6, 0))
+
+        ttk.Label(row3, text="Éxito Captura (% 1-100):").pack(side="left", padx=(0, 6))
         self.capture_rate_var = tk.StringVar(value="50")
         self.capture_rate_spin = ttk.Spinbox(
-            opts,
+            row3,
             from_=1,
             to=100,
             width=5,
@@ -386,14 +408,14 @@ class App(tk.Tk):
 
         self.capture_ocr_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
-            opts,
+            row3,
             text="Capturar según OCR",
             variable=self.capture_ocr_var,
             command=self._apply_settings,
         ).pack(side="left", padx=(14, 0))
 
         self.capture_ocr_label_var = tk.StringVar(value="OCR: --%")
-        ttk.Label(opts, textvariable=self.capture_ocr_label_var).pack(side="left", padx=(10, 0))
+        ttk.Label(row3, textvariable=self.capture_ocr_label_var).pack(side="left", padx=(10, 0))
 
         mid = ttk.Frame(self, padding=(10, 0, 10, 10))
         mid.pack(fill="both", expand=True)
