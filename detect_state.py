@@ -11,6 +11,8 @@ MONITOR = 1
 SLEEP_SEC = 0.25
 THRESH_DEFAULT = 0.86
 CLICK_DELAY = 0.15
+TREE_THRESH = 0.88
+TREE_ROI = None  # (x, y, w, h) para limitar búsqueda del árbol
 
 pyautogui.FAILSAFE = True  # mover ratón a esquina sup-izq para parar
 
@@ -88,6 +90,7 @@ def main():
     btn_continue = load_tpl("tpl/btn_continue.png")
     btn_save = load_tpl("tpl/btn_save.png")
     BTN_THR = 0.85
+    tree_tpl = load_tpl("tpl/tree.png")
 
     sct = mss()
     last = None
@@ -110,8 +113,25 @@ def main():
         now = time.time()
         can_act = (now - last_action_time) >= ACTION_COOLDOWN_SEC
 
+        # Acción 0: Árbol en mundo
+        if can_act and state == "WORLD":
+            search_gray = gray
+            roi_origin = (0, 0)
+            if TREE_ROI:
+                rx, ry, rw, rh = TREE_ROI
+                search_gray = gray[ry:ry + rh, rx:rx + rw]
+                roi_origin = (rx, ry)
+            pos = find_center(search_gray, tree_tpl, TREE_THRESH)
+            if pos:
+                x, y, conf = pos
+                x += roi_origin[0]
+                y += roi_origin[1]
+                print(f"[ACTION] Click ÁRBOL ({conf:.2f})")
+                click_at(x, y)
+                last_action_time = time.time()
+
         # Acción 1: Victoria -> Continuar
-        if can_act and state == "VICTORY":
+        elif can_act and state == "VICTORY":
             pos = find_center(gray, btn_continue, BTN_THR)
             if pos:
                 x, y, conf = pos
