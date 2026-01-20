@@ -206,11 +206,15 @@ class BotRunner:
             thresh,
             config="--psm 7 -c tessedit_char_whitelist=0123456789",
         )
+        raw_text = text.strip()
         digits = re.findall(r"\d+", text)
         if not digits:
+            self.log(f"[OCR] Texto: '{raw_text}' -> --%")
             return None
         value = int(digits[0])
-        return max(0, min(100, value))
+        value = max(0, min(100, value))
+        self.log(f"[OCR] Texto: '{raw_text}' -> {value}%")
+        return value
 
     def start(self):
         if self.running:
