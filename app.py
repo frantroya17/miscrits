@@ -331,6 +331,7 @@ class BotRunner:
         try:
             sct = mss()
             monitor = sct.monitors[MONITOR]
+            fight_states = {"FIGHT_WAIT", "FIGHT_MY_TURN"}
 
             while not self.stop_event.is_set():
                 img = np.array(sct.grab(monitor))
@@ -345,6 +346,8 @@ class BotRunner:
                     self.set_state(state)
                     if state == "FIGHT_WAIT":
                         self.clear_hover()
+                    if state in fight_states and self.last_state not in fight_states:
+                        self.last_rarity = None
                     self.last_state = state
 
                 now = time.time()
