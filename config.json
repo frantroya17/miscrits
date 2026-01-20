@@ -1,0 +1,9 @@
+{
+  "threshold": 0.88,
+  "click_delay": 0.12,
+  "loop_delay": 0.25,
+  "game_region": { "left": 0, "top": 0, "width": 1920, "height": 1080 },
+  "templates": {
+    "fight_button": "assets/fight_button.png"
+  }
+}
