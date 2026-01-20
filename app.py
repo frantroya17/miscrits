@@ -23,6 +23,7 @@ THRESH_DEFAULT = 0.86
 CLICK_DELAY = 0.15
 ACTION_COOLDOWN_SEC = 1.0
 OCR_COOLDOWN_SEC = 0.5
+RARITY_TPL_THRESHOLD = 0.86
 WINDOW_TITLE = "Miscrits"
 
 pyautogui.FAILSAFE = True
@@ -171,8 +172,7 @@ class BotRunner:
         self.kill_attack_index = 1      # 1..12
         self.capture_attack_index = 1   # 1..12  <-- NUEVO
         self.capture_success_rate = 50  # 1..100 (%)
-        self.capture_ocr_enabled = False
-        self.rarity_target = "comun"
+        self.last_rarity = None
         self.rarity_capturable = {key: True for _, key in RARITIES}
 
         # Coordenadas (RELATIVAS)
@@ -198,8 +198,19 @@ class BotRunner:
         # Botones popup (por template)
         self.btn_continue = load_tpl("tpl/btn_continue.png")
         self.btn_save = load_tpl("tpl/btn_save.png")
-        self.btn_capture = load_tpl("tpl/captura.png")
         self.btn_thr = 0.85
+
+        # Templates de rareza
+        self.rarity_tpls: Dict[str, Tuple[np.ndarray, float]] = {}
+        for _, key in RARITIES:
+            tpl_path = f"tpl/rareza_{key}.png"
+            alt_path = f"rareza_{key}.png"
+            if os.path.exists(tpl_path):
+                self.rarity_tpls[key] = (load_tpl(tpl_path), RARITY_TPL_THRESHOLD)
+            elif os.path.exists(alt_path):
+                self.rarity_tpls[key] = (load_tpl(alt_path), RARITY_TPL_THRESHOLD)
+            else:
+                self.log(f"[WARN] Falta template de rareza: {tpl_path} (o {alt_path})")
 
     def log(self, msg: str):
         if self.on_log:
@@ -223,6 +234,19 @@ class BotRunner:
                 self.log("[OCR] Captura: --%")
             else:
                 self.log(f"[OCR] Captura: {rate}%")
+
+    def _detect_rarity(self, screen_gray: np.ndarray) -> Optional[str]:
+        best_key = None
+        best_score = 0.0
+        for key, (tpl_img, thr) in self.rarity_tpls.items():
+            score = match(screen_gray, tpl_img)
+            if score >= thr and score > best_score:
+                best_key = key
+                best_score = score
+        if best_key and best_key != self.last_rarity:
+            self.log(f"[RARITY] Detectada: {best_key} ({best_score:.2f})")
+            self.last_rarity = best_key
+        return best_key
 
     def _read_capture_rate(self, screen_gray: np.ndarray, window, monitor) -> Optional[int]:
         rect = self.capture_ocr_rect
@@ -344,10 +368,10 @@ class BotRunner:
 
                 elif can_act and state == "FIGHT_MY_TURN":
                     attack_type = "MATAR"
-                    action_taken = False
-                    rate = None
+                    rarity = self._detect_rarity(gray)
 
-                    if self.capture_ocr_enabled:
+                    if rarity and self.rarity_capturable.get(rarity, False):
+                        rate = None
                         if (time.time() - self.last_ocr_time) >= OCR_COOLDOWN_SEC:
                             window = get_game_window()
                             if window:
@@ -359,26 +383,8 @@ class BotRunner:
                         else:
                             rate = self.last_capture_rate
 
-                        if rate is not None and rate > self.capture_success_rate:
-                            pos = find_center(gray, self.btn_capture, self.btn_thr)
-                            if pos:
-                                x, y, conf = pos
-                                self.log(
-                                    "[ACTION] Click CAPTURE "
-                                    f"({rate}% > {self.capture_success_rate}%, {conf:.2f})"
-                                )
-                                click_at(x, y)
-                                self.last_action_time = time.time()
-                                action_taken = True
-                            else:
-                                self.log("[WARN] No encuentro el botón CAPTURE (tpl/captura.png).")
-                                attack_type = "CAPTURAR"
-                        else:
+                        if rate is not None and rate >= self.capture_success_rate:
                             attack_type = "CAPTURAR"
-
-                    if action_taken:
-                        time.sleep(SLEEP_SEC)
-                        continue
 
                     if attack_type == "CAPTURAR":
                         self.log(f"[ACTION] Ataque CAPTURA #{self.capture_attack_index}")
@@ -484,39 +490,17 @@ class App(tk.Tk):
         self.capture_rate_spin.bind("<Return>", lambda e: self._apply_settings())
         self.capture_rate_spin.pack(side="left")
 
-        self.capture_ocr_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            row3,
-            text="Capturar según OCR",
-            variable=self.capture_ocr_var,
-            command=self._apply_settings,
-        ).pack(side="left", padx=(14, 0))
-
         self.capture_ocr_label_var = tk.StringVar(value="OCR: --%")
         ttk.Label(row3, textvariable=self.capture_ocr_label_var).pack(side="left", padx=(10, 0))
 
         row4 = ttk.Frame(opts)
         row4.pack(fill="x", anchor="w", pady=(8, 0))
 
-        ttk.Label(row4, text="Rareza objetivo:").pack(side="left", padx=(0, 6))
-        self.rarity_target_var = tk.StringVar(value=RARITIES[0][0])
-        self.rarity_combo = ttk.Combobox(
-            row4,
-            values=[label for label, _ in RARITIES],
-            width=12,
-            state="readonly",
-            textvariable=self.rarity_target_var,
-        )
-        self.rarity_combo.bind("<<ComboboxSelected>>", lambda e: self._apply_settings())
-        self.rarity_combo.pack(side="left")
-
-        row5 = ttk.Frame(opts)
-        row5.pack(fill="x", anchor="w", pady=(6, 0))
-
+        ttk.Label(row4, text="Rarezas atrapables:").pack(side="left", padx=(0, 10))
         self.rarity_images = self._load_rarity_images()
         self.rarity_capturable_vars = {}
         for label, key in RARITIES:
-            rarity_frame = ttk.Frame(row5)
+            rarity_frame = ttk.Frame(row4)
             rarity_frame.pack(side="left", padx=(0, 10))
             img = self.rarity_images.get(key)
             if img:
@@ -560,8 +544,6 @@ class App(tk.Tk):
         self.bot.kill_attack_index = int(self.kill_combo.get())
         self.bot.capture_attack_index = int(self.capture_combo.get())
         self.bot.capture_success_rate = self._get_capture_rate()
-        self.bot.capture_ocr_enabled = bool(self.capture_ocr_var.get())
-        self.bot.rarity_target = self._get_rarity_target_key()
         self.bot.rarity_capturable = {
             key: bool(var.get()) for key, var in self.rarity_capturable_vars.items()
         }
@@ -590,13 +572,6 @@ class App(tk.Tk):
         else:
             text = f"OCR: {rate}%"
         self.after(0, lambda: self.capture_ocr_label_var.set(text))
-
-    def _get_rarity_target_key(self) -> str:
-        selected = self.rarity_target_var.get()
-        for label, key in RARITIES:
-            if label == selected:
-                return key
-        return RARITIES[0][1]
 
     def _load_rarity_images(self) -> Dict[str, tk.PhotoImage]:
         images: Dict[str, tk.PhotoImage] = {}
