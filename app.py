@@ -713,16 +713,10 @@ class App(tk.Tk):
                 return False
             rel_x = int(x - window.left)
             rel_y = int(y - window.top)
-            if rel_x < 0 or rel_y < 0 or rel_x > window.width or rel_y > window.height:
-                self.after(
-                    0,
-                    lambda: messagebox.showwarning(
-                        "Click fuera de ventana",
-                        "El click debe estar dentro de la ventana 'Miscrits'.",
-                    ),
-                )
-                self.after(0, self._reset_world_click_capture)
-                return False
+            max_x = max(0, int(window.width))
+            max_y = max(0, int(window.height))
+            rel_x = max(0, min(max_x, rel_x))
+            rel_y = max(0, min(max_y, rel_y))
             self.after(0, lambda: self._set_world_click_from_listener(rel_x, rel_y))
             return False
 
