@@ -46,6 +46,7 @@ BOT_COORDS = {
         (829, 633),
     ],
     "capture_ocr_rect": [(561, 136), (605, 149)],
+    "neutral_hover_pos": (30, 30),
 }
 
 
@@ -69,6 +70,16 @@ def click_rel(rel_x, rel_y) -> bool:
     pyautogui.moveTo(abs_x, abs_y)
     pyautogui.click()
     time.sleep(CLICK_DELAY)
+    return True
+
+
+def move_rel(rel_x, rel_y) -> bool:
+    w = get_game_window()
+    if not w:
+        return False
+    abs_x = w.left + rel_x
+    abs_y = w.top + rel_y
+    pyautogui.moveTo(abs_x, abs_y)
     return True
 
 
@@ -159,6 +170,7 @@ class BotRunner:
         self.tech_right_arrow = BOT_COORDS["tech_right_arrow"]
         self.tech_slots = BOT_COORDS["tech_slots"]
         self.capture_ocr_rect = BOT_COORDS["capture_ocr_rect"]
+        self.neutral_hover_pos = BOT_COORDS["neutral_hover_pos"]
 
         # Templates de estado
         self.templates = {
@@ -186,6 +198,11 @@ class BotRunner:
     def set_state(self, st: str):
         if self.on_state:
             self.on_state(st)
+
+    def clear_hover(self):
+        moved = move_rel(*self.neutral_hover_pos)
+        if not moved:
+            self.log("[WARN] No encuentro la ventana 'Miscrits' para quitar hover.")
 
     def set_capture_rate(self, rate: Optional[int]):
         if rate != self.last_capture_rate:
@@ -292,6 +309,8 @@ class BotRunner:
                 if state != self.last_state and state is not None:
                     self.log(f"[STATE] {state}")
                     self.set_state(state)
+                    if state == "FIGHT_WAIT":
+                        self.clear_hover()
                     self.last_state = state
 
                 now = time.time()
