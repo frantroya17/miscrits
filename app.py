@@ -443,11 +443,7 @@ class BotRunner:
                                 self.set_capture_rate(None)
                         else:
                             rate = self.last_capture_rate
-
-                        if rate is None:
-                            attack_type = "CAPTURAR"
-                        elif rate >= self.capture_success_rate:
-                            attack_type = "CAPTURAR"
+                        attack_type = "CAPTURAR"
 
                     if attack_type == "CAPTURAR":
                         self.log(f"[ACTION] Ataque CAPTURA #{self.capture_attack_index}")
