@@ -612,14 +612,6 @@ class App(tk.Tk):
             command=self._clear_world_click_template,
         ).pack(side="left", padx=(6, 0))
 
-        self.world_click_double_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            row5,
-            text="Doble click",
-            variable=self.world_click_double_var,
-            command=self._apply_settings,
-        ).pack(side="left", padx=(10, 0))
-
         ttk.Label(row5, text="Cooldown WORLD (1-30s):").pack(side="left", padx=(14, 6))
         self.world_click_cooldown_var = tk.StringVar(value="30")
         self.world_click_cooldown_spin = ttk.Spinbox(
@@ -633,31 +625,6 @@ class App(tk.Tk):
         self.world_click_cooldown_spin.bind("<FocusOut>", lambda e: self._apply_settings())
         self.world_click_cooldown_spin.bind("<Return>", lambda e: self._apply_settings())
         self.world_click_cooldown_spin.pack(side="left")
-
-        row6 = ttk.Frame(opts)
-        row6.pack(fill="x", anchor="w", pady=(8, 0))
-
-        self.click_use_press_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
-            row6,
-            text="Click real (mouse down/up)",
-            variable=self.click_use_press_var,
-            command=self._apply_settings,
-        ).pack(side="left")
-
-        ttk.Label(row6, text="Hold click (ms 0-1000):").pack(side="left", padx=(12, 6))
-        self.click_hold_var = tk.StringVar(value="50")
-        self.click_hold_spin = ttk.Spinbox(
-            row6,
-            from_=0,
-            to=1000,
-            width=5,
-            textvariable=self.click_hold_var,
-            command=self._apply_settings,
-        )
-        self.click_hold_spin.bind("<FocusOut>", lambda e: self._apply_settings())
-        self.click_hold_spin.bind("<Return>", lambda e: self._apply_settings())
-        self.click_hold_spin.pack(side="left")
 
         mid = ttk.Frame(self, padding=(10, 0, 10, 10))
         mid.pack(fill="both", expand=True)
@@ -688,13 +655,9 @@ class App(tk.Tk):
         self.bot.capture_attack_index = int(self.capture_combo.get())
         self.bot.capture_success_rate = self._get_capture_rate()
         self.bot.world_click_cooldown_sec = self._get_world_click_cooldown()
-        self.bot.world_click_double = bool(self.world_click_double_var.get())
-        self.bot.click_use_press = bool(self.click_use_press_var.get())
-        self.bot.click_hold_ms = self._get_click_hold_ms()
         self.bot.rarity_capturable = {
             key: bool(var.get()) for key, var in self.rarity_capturable_vars.items()
         }
-        self.bot.apply_click_settings()
 
     def _get_capture_rate(self) -> int:
         try:
@@ -712,15 +675,6 @@ class App(tk.Tk):
             value = 30
         value = max(1, min(30, value))
         self.world_click_cooldown_var.set(str(value))
-        return value
-
-    def _get_click_hold_ms(self) -> int:
-        try:
-            value = int(self.click_hold_var.get())
-        except ValueError:
-            value = 50
-        value = max(0, min(1000, value))
-        self.click_hold_var.set(str(value))
         return value
 
     def _ui_set_state(self, st: str):
