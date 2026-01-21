@@ -26,6 +26,7 @@ OCR_COOLDOWN_SEC = 0.5
 RARITY_TPL_THRESHOLD = 0.86
 WORLD_CLICK_TPL_THRESHOLD = 0.88
 WINDOW_TITLE = "Miscrits"
+WORLD_DOUBLE_CLICK_DELAY = 0.12
 
 pyautogui.FAILSAFE = True
 
@@ -196,6 +197,7 @@ class BotRunner:
         self.world_click_cooldown_sec = 30
         self.world_click_template_path: Optional[str] = None
         self.world_click_template: Optional[np.ndarray] = None
+        self.world_click_double = False
         self.last_rarity = None
         self.rarity_capturable = {key: True for _, key in RARITIES}
 
@@ -443,6 +445,9 @@ class BotRunner:
                                     f"({conf:.2f})"
                                 )
                                 click_at(x, y)
+                                if self.world_click_double:
+                                    time.sleep(WORLD_DOUBLE_CLICK_DELAY)
+                                    click_at(x, y)
                                 self.last_world_click_time = now
 
                 time.sleep(SLEEP_SEC)
@@ -583,6 +588,14 @@ class App(tk.Tk):
             command=self._clear_world_click_template,
         ).pack(side="left", padx=(6, 0))
 
+        self.world_click_double_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            row5,
+            text="Doble click",
+            variable=self.world_click_double_var,
+            command=self._apply_settings,
+        ).pack(side="left", padx=(10, 0))
+
         ttk.Label(row5, text="Cooldown WORLD (1-30s):").pack(side="left", padx=(14, 6))
         self.world_click_cooldown_var = tk.StringVar(value="30")
         self.world_click_cooldown_spin = ttk.Spinbox(
@@ -626,6 +639,7 @@ class App(tk.Tk):
         self.bot.capture_attack_index = int(self.capture_combo.get())
         self.bot.capture_success_rate = self._get_capture_rate()
         self.bot.world_click_cooldown_sec = self._get_world_click_cooldown()
+        self.bot.world_click_double = bool(self.world_click_double_var.get())
         self.bot.rarity_capturable = {
             key: bool(var.get()) for key, var in self.rarity_capturable_vars.items()
         }
