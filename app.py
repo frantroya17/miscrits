@@ -444,7 +444,9 @@ class BotRunner:
                         else:
                             rate = self.last_capture_rate
 
-                        if rate is not None and rate >= self.capture_success_rate:
+                        if rate is None:
+                            attack_type = "CAPTURAR"
+                        elif rate >= self.capture_success_rate:
                             attack_type = "CAPTURAR"
 
                     if attack_type == "CAPTURAR":
