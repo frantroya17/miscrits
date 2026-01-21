@@ -71,9 +71,24 @@ def get_game_window():
     return w
 
 
+def focus_game_window() -> bool:
+    w = get_game_window()
+    if not w:
+        return False
+    try:
+        if not w.isActive:
+            w.activate()
+            time.sleep(0.1)
+    except Exception:
+        return False
+    return True
+
+
 def click_rel(rel_x, rel_y) -> bool:
     w = get_game_window()
     if not w:
+        return False
+    if not focus_game_window():
         return False
     abs_x = w.left + rel_x
     abs_y = w.top + rel_y
@@ -86,6 +101,8 @@ def click_rel(rel_x, rel_y) -> bool:
 def move_rel(rel_x, rel_y) -> bool:
     w = get_game_window()
     if not w:
+        return False
+    if not focus_game_window():
         return False
     abs_x = w.left + rel_x
     abs_y = w.top + rel_y
@@ -124,6 +141,8 @@ def find_center(screen_gray: np.ndarray, tpl_gray: np.ndarray, threshold: float)
 
 
 def click_at(x, y):
+    if not focus_game_window():
+        return
     pyautogui.moveTo(x, y)
     pyautogui.click()
     time.sleep(CLICK_DELAY)
