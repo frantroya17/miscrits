@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Optional, Dict, Tuple
 
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 
 import pyautogui
 import pygetwindow as gw
@@ -15,10 +15,6 @@ import numpy as np
 from mss import mss
 import pytesseract
 import keyboard
-try:
-    from pynput import mouse as pynput_mouse
-except Exception:
-    pynput_mouse = None
 
 
 MONITOR = 1
@@ -28,6 +24,7 @@ CLICK_DELAY = 0.15
 ACTION_COOLDOWN_SEC = 1.0
 OCR_COOLDOWN_SEC = 0.5
 RARITY_TPL_THRESHOLD = 0.86
+WORLD_CLICK_TPL_THRESHOLD = 0.88
 WINDOW_TITLE = "Miscrits"
 
 pyautogui.FAILSAFE = True
@@ -60,7 +57,6 @@ BOT_COORDS = {
     ],
     "capture_ocr_rect": [(561, 136), (605, 149)],
     "neutral_hover_pos": (30, 30),
-    "world_click_pos": (480, 360),
 }
 
 
@@ -178,8 +174,9 @@ class BotRunner:
         self.kill_attack_index = 1      # 1..12
         self.capture_attack_index = 1   # 1..12  <-- NUEVO
         self.capture_success_rate = 50  # 1..100 (%)
-        self.world_click_pos = BOT_COORDS["world_click_pos"]
         self.world_click_cooldown_sec = 30
+        self.world_click_template_path: Optional[str] = None
+        self.world_click_template: Optional[np.ndarray] = None
         self.last_rarity = None
         self.rarity_capturable = {key: True for _, key in RARITIES}
 
@@ -334,6 +331,14 @@ class BotRunner:
         # Por ahora EXACTAMENTE igual que matar
         self._select_attack_by_index(attack_index)
 
+    def set_world_click_template(self, path: Optional[str]):
+        if not path:
+            self.world_click_template_path = None
+            self.world_click_template = None
+            return
+        self.world_click_template_path = path
+        self.world_click_template = load_tpl(path)
+
     def _run_loop(self):
         self.log("[BOT] Iniciado")
         try:
@@ -408,15 +413,18 @@ class BotRunner:
 
                 if state == "WORLD":
                     if (now - self.last_world_click_time) >= self.world_click_cooldown_sec:
-                        if click_rel(*self.world_click_pos):
-                            self.log(
-                                "[ACTION] Click WORLD "
-                                f"{self.world_click_pos} "
-                                f"(cooldown {self.world_click_cooldown_sec}s)"
-                            )
+                        if self.world_click_template is None:
                             self.last_world_click_time = now
                         else:
-                            self.log("[WARN] No encuentro la ventana 'Miscrits' para click WORLD.")
+                            pos = find_center(gray, self.world_click_template, WORLD_CLICK_TPL_THRESHOLD)
+                            if pos:
+                                x, y, conf = pos
+                                self.log(
+                                    "[ACTION] Click WORLD template "
+                                    f"({conf:.2f})"
+                                )
+                                click_at(x, y)
+                                self.last_world_click_time = now
 
                 time.sleep(SLEEP_SEC)
 
@@ -542,18 +550,19 @@ class App(tk.Tk):
         row5 = ttk.Frame(opts)
         row5.pack(fill="x", anchor="w", pady=(8, 0))
 
-        ttk.Label(row5, text="Click WORLD (X,Y):").pack(side="left", padx=(0, 6))
-        self.world_click_x_var = tk.StringVar(value="480")
-        self.world_click_y_var = tk.StringVar(value="360")
-        self.world_click_label_var = tk.StringVar(value=self._format_world_click_pos())
-        ttk.Label(row5, textvariable=self.world_click_label_var).pack(side="left")
-        self.world_click_listener = None
-        self.set_world_click_btn = ttk.Button(
+        ttk.Label(row5, text="Click WORLD (imagen):").pack(side="left", padx=(0, 6))
+        self.world_click_tpl_var = tk.StringVar(value="Sin imagen seleccionada")
+        ttk.Label(row5, textvariable=self.world_click_tpl_var).pack(side="left")
+        ttk.Button(
             row5,
-            text="Set coordinates",
-            command=self._arm_world_click_capture,
-        )
-        self.set_world_click_btn.pack(side="left", padx=(8, 0))
+            text="Seleccionar imagen",
+            command=self._select_world_click_template,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            row5,
+            text="Quitar",
+            command=self._clear_world_click_template,
+        ).pack(side="left", padx=(6, 0))
 
         ttk.Label(row5, text="Cooldown WORLD (1-30s):").pack(side="left", padx=(14, 6))
         self.world_click_cooldown_var = tk.StringVar(value="30")
@@ -585,7 +594,6 @@ class App(tk.Tk):
         try:
             keyboard.add_hotkey("f10", self.on_start)
             keyboard.add_hotkey("esc", self.on_close)
-            keyboard.add_hotkey("x", self._arm_world_click_capture)
             self.keyboard_hotkeys_enabled = True
         except Exception as exc:
             self._ui_log(f"[WARN] Hotkeys desactivados: {exc}")
@@ -598,7 +606,6 @@ class App(tk.Tk):
         self.bot.kill_attack_index = int(self.kill_combo.get())
         self.bot.capture_attack_index = int(self.capture_combo.get())
         self.bot.capture_success_rate = self._get_capture_rate()
-        self.bot.world_click_pos = self._get_world_click_pos()
         self.bot.world_click_cooldown_sec = self._get_world_click_cooldown()
         self.bot.rarity_capturable = {
             key: bool(var.get()) for key, var in self.rarity_capturable_vars.items()
@@ -612,31 +619,6 @@ class App(tk.Tk):
         value = max(1, min(100, value))
         self.capture_rate_var.set(str(value))
         return value
-
-    def _get_world_click_pos(self) -> Tuple[int, int]:
-        try:
-            x_val = int(self.world_click_x_var.get())
-        except ValueError:
-            x_val = BOT_COORDS["world_click_pos"][0]
-        try:
-            y_val = int(self.world_click_y_var.get())
-        except ValueError:
-            y_val = BOT_COORDS["world_click_pos"][1]
-        window = get_game_window()
-        if window:
-            max_x = max(0, int(window.width))
-            max_y = max(0, int(window.height))
-        else:
-            max_x = 2000
-            max_y = 2000
-        x_val = max(0, min(max_x, x_val))
-        y_val = max(0, min(max_y, y_val))
-        self.world_click_x_var.set(str(x_val))
-        self.world_click_y_var.set(str(y_val))
-        return (x_val, y_val)
-
-    def _format_world_click_pos(self) -> str:
-        return f"{self.world_click_x_var.get()}, {self.world_click_y_var.get()}"
 
     def _get_world_click_cooldown(self) -> int:
         try:
@@ -676,80 +658,23 @@ class App(tk.Tk):
                     break
         return images
 
-    def _arm_world_click_capture(self):
-        if pynput_mouse is None:
-            messagebox.showwarning(
-                "No disponible",
-                "No se pudo activar la captura de click (falta pynput).",
-            )
+    def _select_world_click_template(self):
+        path = filedialog.askopenfilename(
+            title="Seleccionar imagen para click WORLD",
+            filetypes=[("Imagen", "*.png *.jpg *.jpeg *.bmp"), ("Todos", "*.*")],
+        )
+        if not path:
             return
-        if self.world_click_listener is not None:
+        try:
+            self.bot.set_world_click_template(path)
+        except Exception as exc:
+            messagebox.showerror("Error", f"No se pudo cargar la imagen: {exc}")
             return
-        self.set_world_click_btn.config(state="disabled")
-        self.world_click_label_var.set("Esperando click...")
+        self.world_click_tpl_var.set(os.path.basename(path))
 
-        def on_click(x, y, button, pressed):
-            if not pressed:
-                return True
-            window = get_game_window()
-            if not window:
-                self.after(
-                    0,
-                    lambda: messagebox.showwarning(
-                        "Ventana no encontrada",
-                        "No se encontró la ventana 'Miscrits'.",
-                    ),
-                )
-                self.after(0, self._reset_world_click_capture)
-                return False
-            rel_x = int(x - window.left)
-            rel_y = int(y - window.top)
-            max_x = max(0, int(window.width))
-            max_y = max(0, int(window.height))
-            margin = 20
-            if rel_x < -margin or rel_y < -margin or rel_x > max_x + margin or rel_y > max_y + margin:
-                self.after(
-                    0,
-                    lambda: messagebox.showwarning(
-                        "Click fuera de ventana",
-                        "El click debe estar dentro de la ventana 'Miscrits'.",
-                    ),
-                )
-                self.after(0, self._reset_world_click_capture)
-                return False
-            rel_x = max(0, min(max_x, rel_x))
-            rel_y = max(0, min(max_y, rel_y))
-            self.after(0, lambda: self._set_world_click_from_listener(rel_x, rel_y))
-            return False
-
-        self.world_click_listener = pynput_mouse.Listener(on_click=on_click)
-        self.world_click_listener.start()
-
-    def _reset_world_click_capture(self):
-        if self.world_click_listener is not None:
-            self.world_click_listener.stop()
-            self.world_click_listener = None
-        self.world_click_label_var.set(self._format_world_click_pos())
-        self.set_world_click_btn.config(state="normal")
-
-    def _set_world_click_from_listener(self, x_val: int, y_val: int):
-        if self.world_click_listener is not None:
-            self.world_click_listener.stop()
-            self.world_click_listener = None
-        window = get_game_window()
-        if window:
-            max_x = max(0, int(window.width))
-            max_y = max(0, int(window.height))
-        else:
-            max_x = 2000
-            max_y = 2000
-        x_val = max(0, min(max_x, x_val))
-        y_val = max(0, min(max_y, y_val))
-        self.world_click_x_var.set(str(x_val))
-        self.world_click_y_var.set(str(y_val))
-        self.world_click_label_var.set(self._format_world_click_pos())
-        self.set_world_click_btn.config(state="normal")
-        self._apply_settings()
+    def _clear_world_click_template(self):
+        self.bot.set_world_click_template(None)
+        self.world_click_tpl_var.set("Sin imagen seleccionada")
 
     def on_start(self):
         try:
