@@ -27,6 +27,8 @@ RARITY_TPL_THRESHOLD = 0.86
 WORLD_CLICK_TPL_THRESHOLD = 0.88
 WINDOW_TITLE = "Miscrits"
 WORLD_DOUBLE_CLICK_DELAY = 0.12
+CLICK_HOLD_SEC = 0.05
+CLICK_USE_PRESS = True
 
 pyautogui.FAILSAFE = True
 
@@ -85,6 +87,12 @@ def focus_game_window() -> bool:
     return True
 
 
+def update_click_settings(use_press: bool, hold_ms: int) -> None:
+    global CLICK_USE_PRESS, CLICK_HOLD_SEC
+    CLICK_USE_PRESS = bool(use_press)
+    CLICK_HOLD_SEC = max(0.0, min(1.0, hold_ms / 1000))
+
+
 def click_rel(rel_x, rel_y) -> bool:
     w = get_game_window()
     if not w:
@@ -94,7 +102,12 @@ def click_rel(rel_x, rel_y) -> bool:
     abs_x = w.left + rel_x
     abs_y = w.top + rel_y
     pyautogui.moveTo(abs_x, abs_y)
-    pyautogui.click()
+    if CLICK_USE_PRESS:
+        pyautogui.mouseDown()
+        time.sleep(CLICK_HOLD_SEC)
+        pyautogui.mouseUp()
+    else:
+        pyautogui.click()
     time.sleep(CLICK_DELAY)
     return True
 
@@ -145,7 +158,12 @@ def click_at(x, y):
     if not focus_game_window():
         return
     pyautogui.moveTo(x, y)
-    pyautogui.click()
+    if CLICK_USE_PRESS:
+        pyautogui.mouseDown()
+        time.sleep(CLICK_HOLD_SEC)
+        pyautogui.mouseUp()
+    else:
+        pyautogui.click()
     time.sleep(CLICK_DELAY)
 
 
@@ -200,6 +218,8 @@ class BotRunner:
         self.world_click_double = False
         self.last_rarity = None
         self.rarity_capturable = {key: True for _, key in RARITIES}
+        self.click_use_press = True
+        self.click_hold_ms = 50
 
         # Coordenadas (RELATIVAS)
         self.tech_left_arrow = BOT_COORDS["tech_left_arrow"]
@@ -237,6 +257,7 @@ class BotRunner:
                 self.rarity_tpls[key] = (load_tpl(alt_path), RARITY_TPL_THRESHOLD)
             else:
                 self.log(f"[WARN] Falta template de rareza: {tpl_path} (o {alt_path})")
+        self.apply_click_settings()
 
     def log(self, msg: str):
         if self.on_log:
@@ -359,6 +380,9 @@ class BotRunner:
             return
         self.world_click_template_path = path
         self.world_click_template = load_tpl(path)
+
+    def apply_click_settings(self):
+        update_click_settings(self.click_use_press, self.click_hold_ms)
 
     def _run_loop(self):
         self.log("[BOT] Iniciado")
@@ -610,6 +634,31 @@ class App(tk.Tk):
         self.world_click_cooldown_spin.bind("<Return>", lambda e: self._apply_settings())
         self.world_click_cooldown_spin.pack(side="left")
 
+        row6 = ttk.Frame(opts)
+        row6.pack(fill="x", anchor="w", pady=(8, 0))
+
+        self.click_use_press_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            row6,
+            text="Click real (mouse down/up)",
+            variable=self.click_use_press_var,
+            command=self._apply_settings,
+        ).pack(side="left")
+
+        ttk.Label(row6, text="Hold click (ms 0-1000):").pack(side="left", padx=(12, 6))
+        self.click_hold_var = tk.StringVar(value="50")
+        self.click_hold_spin = ttk.Spinbox(
+            row6,
+            from_=0,
+            to=1000,
+            width=5,
+            textvariable=self.click_hold_var,
+            command=self._apply_settings,
+        )
+        self.click_hold_spin.bind("<FocusOut>", lambda e: self._apply_settings())
+        self.click_hold_spin.bind("<Return>", lambda e: self._apply_settings())
+        self.click_hold_spin.pack(side="left")
+
         mid = ttk.Frame(self, padding=(10, 0, 10, 10))
         mid.pack(fill="both", expand=True)
 
@@ -640,9 +689,12 @@ class App(tk.Tk):
         self.bot.capture_success_rate = self._get_capture_rate()
         self.bot.world_click_cooldown_sec = self._get_world_click_cooldown()
         self.bot.world_click_double = bool(self.world_click_double_var.get())
+        self.bot.click_use_press = bool(self.click_use_press_var.get())
+        self.bot.click_hold_ms = self._get_click_hold_ms()
         self.bot.rarity_capturable = {
             key: bool(var.get()) for key, var in self.rarity_capturable_vars.items()
         }
+        self.bot.apply_click_settings()
 
     def _get_capture_rate(self) -> int:
         try:
@@ -660,6 +712,15 @@ class App(tk.Tk):
             value = 30
         value = max(1, min(30, value))
         self.world_click_cooldown_var.set(str(value))
+        return value
+
+    def _get_click_hold_ms(self) -> int:
+        try:
+            value = int(self.click_hold_var.get())
+        except ValueError:
+            value = 50
+        value = max(0, min(1000, value))
+        self.click_hold_var.set(str(value))
         return value
 
     def _ui_set_state(self, st: str):
